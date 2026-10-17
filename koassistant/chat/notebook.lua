@@ -550,35 +550,14 @@ function Notebook.appendSnippet(document_path, text, opts)
     return true, nil
 end
 
---- Save chat to notebook (convenience function)
---- Extracts Q+A from history and formats as notebook entry
---- Only includes follow-up if user typed additional input (not the full structured message)
---- @param document_path string The document file path
+--- Extract the notebook entry fields from a chat (no file I/O)
+--- Split out of saveChat (llm-note fork) so the QuickNote mirror can send a chat
+--- without writing the notebook.
 --- @param history table MessageHistory object
 --- @param highlighted_text string|nil Selected text (if any)
---- @param ui table|nil ReaderUI instance
---- @param content_format string|nil "response" | "qa" | "full_qa" (default: "full_qa", the schema default)
---- @param model_name string|nil Model name to include in entry (e.g. "claude-sonnet-4-20250514")
---- @return boolean success Whether save succeeded
---- @return string|nil error Error message if failed
-function Notebook.saveChat(document_path, history, highlighted_text, ui, content_format, model_name)
-    local notebook_path = Notebook.getPath(document_path)
-    if not notebook_path then
-        return false, "Notebook folder not configured"
-    end
-
-    -- Auto-create notebook if it doesn't exist (ensures proper header/frontmatter)
-    if not Notebook.exists(document_path) then
-        local ok, err = Notebook.create(document_path)
-        if not ok then return false, err end
-        -- Re-resolve path (vault mode may have generated collision-safe name)
-        notebook_path = Notebook.getPath(document_path)
-        if not notebook_path then return false, "Failed to resolve notebook path" end
-    end
-
-    local page_info = Notebook.getPageInfo(ui, document_path)
-    content_format = content_format or "full_qa"
-
+--- @param model_name string|nil Model name to include in entry
+--- @return table entry_data { follow_up, response, action_name, highlighted_text, model_name, attachments }
+function Notebook.chatEntryData(history, highlighted_text, model_name)
     -- Extract messages from history
     -- The message structure is:
     --   1. Context user message (is_context=true): Contains [Context], [Request], and [Additional user input] sections
@@ -638,16 +617,52 @@ function Notebook.saveChat(document_path, history, highlighted_text, ui, content
         end
     end
 
-    local entry = Notebook.formatEntry({
+    return {
         follow_up = follow_up,
         response = response or "",
         action_name = history.prompt_action,
         highlighted_text = actual_highlighted,
         model_name = model_name,
         attachments = attachments,
-    }, page_info, content_format)
+    }
+end
 
-    return Notebook.append(notebook_path, entry)
+--- Save chat to notebook (convenience function)
+--- Extracts Q+A from history and formats as notebook entry
+--- Only includes follow-up if user typed additional input (not the full structured message)
+--- @param document_path string The document file path
+--- @param history table MessageHistory object
+--- @param highlighted_text string|nil Selected text (if any)
+--- @param ui table|nil ReaderUI instance
+--- @param content_format string|nil "response" | "qa" | "full_qa" (default: "full_qa", the schema default)
+--- @param model_name string|nil Model name to include in entry (e.g. "claude-sonnet-4-20250514")
+--- @return boolean success Whether save succeeded
+--- @return string|nil error Error message if failed
+--- @return table entry_data The structured entry plus page_info (for mirrors such as QuickNote)
+function Notebook.saveChat(document_path, history, highlighted_text, ui, content_format, model_name)
+    local notebook_path = Notebook.getPath(document_path)
+    if not notebook_path then
+        return false, "Notebook folder not configured"
+    end
+
+    -- Auto-create notebook if it doesn't exist (ensures proper header/frontmatter)
+    if not Notebook.exists(document_path) then
+        local ok, err = Notebook.create(document_path)
+        if not ok then return false, err end
+        -- Re-resolve path (vault mode may have generated collision-safe name)
+        notebook_path = Notebook.getPath(document_path)
+        if not notebook_path then return false, "Failed to resolve notebook path" end
+    end
+
+    local page_info = Notebook.getPageInfo(ui, document_path)
+    content_format = content_format or "full_qa"
+
+    local entry_data = Notebook.chatEntryData(history, highlighted_text, model_name)
+    local entry = Notebook.formatEntry(entry_data, page_info, content_format)
+
+    local ok, err = Notebook.append(notebook_path, entry)
+    entry_data.page_info = page_info
+    return ok, err, entry_data
 end
 
 --- Read notebook content

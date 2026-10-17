@@ -3414,6 +3414,24 @@ local function showResponseDialog(title, history, highlightedText, addMessage, t
         UIManager:show(chatgpt_viewer)
     end
 
+    -- llm-note fork: a note action (AI Note picker) files its answer on its own —
+    -- into the book's notebook, which mirrors to QuickNote; with the notebook
+    -- off or unavailable, straight to QuickNote. Once per chat: replies in the
+    -- same window are saved by hand (Notebook button).
+    if history.auto_note and not history._auto_noted then
+        history._auto_noted = true
+        UIManager:scheduleIn(0.3, function()
+            local Notebook = require("koassistant.chat.notebook")
+            local QuickNote = require("koassistant.integrations.quicknote")
+            local live = QuickNote.features()
+            if live.note_actions_save_notebook ~= false and Notebook.getPath(document_path) then
+                chatgpt_viewer:saveToNotebook()
+            elseif QuickNote.isEnabled(live) then
+                chatgpt_viewer:sendToQuickNote()
+            end
+        end)
+    end
+
     -- Auto-save if enabled
     if temp_config and temp_config.features and temp_config.features.auto_save_all_chats ~= false then
         -- Schedule auto-save to run after viewer is displayed
@@ -7484,6 +7502,8 @@ local function showChatGPTDialog(ui_instance, highlighted_text, config, prompt_t
                             end
                         end
 
+                        -- llm-note fork: note actions save themselves (notebook + QuickNote)
+                        history.auto_note = action.auto_note and true or nil
                         showResponseDialog(_(action.text), history, highlighted_text, addMessage, temp_config, document_path, plugin, book_metadata, launch_context, ui_instance)
                     else
                         closeLoadingDialog()
@@ -13109,6 +13129,8 @@ local function executeDirectAction(ui, action, highlighted_text, configuration, 
                 end
                 return nil
             end
+            -- llm-note fork: note actions save themselves (notebook + QuickNote)
+            history.auto_note = (action.auto_note or (opts and opts.auto_note)) and true or nil
             showResponseDialog(action.text, history, highlighted_text, addMessage, temp_config, document_path, plugin, book_metadata, nil, ui)
         else
             local error_msg = temp_config_or_error or "Unknown error"
@@ -13288,7 +13310,7 @@ local function executeDirectAction(ui, action, highlighted_text, configuration, 
                     configuration.features._run_variant = opts.run_variant
                 end
                 handlePredefinedPrompt(action, highlighted_text, ui, configuration, nil,
-                    plugin, nil, onComplete, book_metadata)
+                    plugin, opts and opts.additional_input or nil, onComplete, book_metadata)
             end)
         return
     end
@@ -13300,7 +13322,10 @@ local function executeDirectAction(ui, action, highlighted_text, configuration, 
     if opts and opts.run_variant and configuration and configuration.features then
         configuration.features._run_variant = opts.run_variant
     end
-    handlePredefinedPrompt(action, highlighted_text, ui, configuration, nil, plugin, nil, onComplete, book_metadata)
+    -- additional_input (llm-note fork): typed text from the AI Note picker's
+    -- "Ask my own…" — lands as the [Additional user input] tail (or {user_input})
+    handlePredefinedPrompt(action, highlighted_text, ui, configuration, nil, plugin,
+        opts and opts.additional_input or nil, onComplete, book_metadata)
 end
 
 --- What a headless run hands its caller, from handlePredefinedPrompt's

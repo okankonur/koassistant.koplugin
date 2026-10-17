@@ -4582,8 +4582,26 @@ function ChatGPTViewer.appendSnippetToNotebook(document_path, text, opts)
   -- Name the target book when known — matters when the selection came from a viewer
   -- showing OTHER content than the book the notebook belongs to (Q3 decision).
   local title = opts and opts.book_title
+  local toast = title and T(_("Added to notebook: %1"), title) or _("Added to notebook")
+  -- llm-note fork: a passage saved from the book itself (page_info = reader
+  -- origin) is mirrored to QuickNote as a plain highlight note
+  if opts and opts.page_info then
+    local QuickNote = require("koassistant.integrations.quicknote")
+    local live = QuickNote.features()
+    if QuickNote.isEnabled(live) and live.quicknote_mirror_highlights ~= false
+        and QuickNote.submit(live, {
+          kind = "highlight",
+          highlighted_text = text,
+          follow_up = opts.comment,
+          book_title = opts.book_title,
+          book_author = opts.book_author,
+          page_info = opts.page_info,
+        }, { prefix = _("Added to notebook") }) then
+      return
+    end
+  end
   UIManager:show(Notification:new{
-    text = title and T(_("Added to notebook: %1"), title) or _("Added to notebook"),
+    text = toast,
     timeout = 2,
   })
 end
@@ -5003,6 +5021,18 @@ function ChatGPTViewer:showNotebookPopup()
     end,
   }})
 
+  -- llm-note fork: one-off send to QuickNote (no notebook write)
+  if require("koassistant.integrations.quicknote").isEnabled(
+      require("koassistant.integrations.quicknote").features()) then
+    table.insert(buttons, {{
+      text = _("Send to QuickNote"),
+      callback = function()
+        UIManager:close(self_ref._notebook_dialog)
+        self_ref:sendToQuickNote()
+      end,
+    }})
+  end
+
   if notebook_exists then
     -- One button per row (anchored popup reads as a narrow vertical list).
     table.insert(buttons, {{
@@ -5067,9 +5097,11 @@ function ChatGPTViewer:saveToNotebook(format_override)
 
   -- Save to notebook
   local model_name = self.configuration and require("koassistant.request.model_constraints").dispatchModel(self.configuration)
-  local ok, err = Notebook.saveChat(document_path, history, self.original_highlighted_text, reader_ui, content_format, model_name)
+  local ok, err, entry_data = Notebook.saveChat(document_path, history, self.original_highlighted_text, reader_ui, content_format, model_name)
 
   if ok then
+    -- llm-note fork: mirror the entry to QuickNote (its own toast follows)
+    local mirrored = self:_mirrorToQuickNote(entry_data, { prefix = _("Saved to notebook") })
     -- Update notebook index directly (same as main.lua:updateNotebookIndex)
     local stats = Notebook.getStats(document_path)
     if stats then
@@ -5079,16 +5111,66 @@ function ChatGPTViewer:saveToNotebook(format_override)
       G_reader_settings:flush()
     end
 
-    UIManager:show(Notification:new{
-      text = _("Saved to notebook"),
-      timeout = 2,
-    })
+    if not mirrored then
+      UIManager:show(Notification:new{
+        text = _("Saved to notebook"),
+        timeout = 2,
+      })
+    end
   else
     UIManager:show(Notification:new{
       text = _("Failed to save: ") .. (err or "unknown error"),
       timeout = 3,
     })
   end
+end
+
+--- llm-note fork: send a notebook entry to QuickNote when sync is on.
+--- @param entry_data table from Notebook.saveChat / Notebook.chatEntryData
+--- @param opts table|nil { silent = bool, prefix = string, force = bool }
+---   force = ignore the mirror toggle; prefix/silent go to QuickNote.notify
+--- @return boolean queued
+function ChatGPTViewer:_mirrorToQuickNote(entry_data, opts)
+  opts = opts or {}
+  local QuickNote = require("koassistant.integrations.quicknote")
+  local live = QuickNote.features()
+  if not QuickNote.isEnabled(live) then return false end
+  if not opts.force and live.quicknote_mirror_notebook == false then return false end
+  if not entry_data then return false end
+  local features = self.configuration and self.configuration.features or {}
+  local meta = features.book_metadata or {}
+  local entry = {}
+  for k, v in pairs(entry_data) do entry[k] = v end
+  entry.kind = "ai"
+  entry.book_title = entry.book_title or meta.title
+  entry.book_author = entry.book_author or meta.author
+  if live.quicknote_include_model ~= true then entry.model_name = nil end
+  return QuickNote.submit(live, entry, { silent = opts.silent, prefix = opts.prefix })
+end
+
+--- llm-note fork: send this chat to QuickNote without touching the notebook
+--- (the Notebook popup's "Send to QuickNote" row; also works for general chats).
+function ChatGPTViewer:sendToQuickNote()
+  local QuickNote = require("koassistant.integrations.quicknote")
+  if not QuickNote.isEnabled(QuickNote.features()) then
+    UIManager:show(InfoMessage:new{
+      text = _("QuickNote sync is off. Turn it on and add an API key under Settings → QuickNote Sync."),
+      timeout = 4,
+    })
+    return
+  end
+  local history = self._message_history or self.original_history
+  if not history then
+    UIManager:show(Notification:new{ text = _("No response to send"), timeout = 2 })
+    return
+  end
+  local Notebook = require("koassistant.chat.notebook")
+  local model_name = self.configuration and require("koassistant.request.model_constraints").dispatchModel(self.configuration)
+  local entry_data = Notebook.chatEntryData(history, self.original_highlighted_text, model_name)
+  local document_path = self.configuration and self.configuration.document_path
+  local ReaderUI = require("apps/reader/readerui")
+  entry_data.page_info = Notebook.getPageInfo(ReaderUI.instance, document_path)
+  self:_mirrorToQuickNote(entry_data, { force = true })
 end
 
 --- Small format picker for the notebook popup's "Add (choose format)..." row (item

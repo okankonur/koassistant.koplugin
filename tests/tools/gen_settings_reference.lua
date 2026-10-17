@@ -59,6 +59,7 @@ Gen.OWNERS = {
     highlight_settings = "Contexts-and-Chat",
     actions_and_prompts = "Actions-and-Menus",
     notebooks = "Conversations-Notebooks-and-Export",
+    quicknote_sync = "Conversations-Notebooks-and-Export",
     privacy_data = "Privacy-and-Data",
     menus_and_buttons = "Actions-and-Menus",
     gestures_header = "Setup-Gestures-and-Panels",
@@ -144,6 +145,9 @@ Gen.DYNAMIC_LABELS = {
     tool_mode = "Book Tools Mode: Gather then answer / Interactive",
     tool_lookup_effort = "Book Tools Lookup Effort: Quick / Standard / Thorough",
     debug_display_level = "Debug Detail Level: Minimal / Names / Full",
+    quicknote_server_action = "Server: …",
+    quicknote_key_action = "API key: … / not set",
+    quicknote_flush = "Send pending notes (N)",
 }
 
 local function label(item)

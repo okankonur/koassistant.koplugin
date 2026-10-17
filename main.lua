@@ -268,6 +268,12 @@ function AskGPT:init()
     end
   end
 
+  -- llm-note fork: send notes left in the QuickNote outbox by an earlier
+  -- session (same deferral and Wi-Fi guard as the update check above)
+  UIManager:scheduleIn(25, function()
+    if NetworkMgr:isWifiOn() then self:flushQuickNoteOutbox(false) end
+  end)
+
   -- Add to highlight dialog if highlight feature is available.
   -- All KOAssistant buttons register UNCONDITIONALLY; visibility is decided per
   -- menu-open via show_in_highlight_dialog_func (KOReader rebuilds the button table
@@ -353,10 +359,46 @@ function AskGPT:init()
             page_info = Notebook.getPageInfo(self.ui),
             book_title = self.ui.doc_props
               and (self.ui.doc_props.display_title or self.ui.doc_props.title),
+            book_author = self.ui.doc_props and self.ui.doc_props.authors,
           })
         end,
       }
     end)
+    -- llm-note fork: "AI Note" — one-tap note prompts (Key Concepts, Explain
+    -- Simply, …) whose answers save themselves to the notebook and QuickNote.
+    -- Id sorts after koassistant_add_notebook and before koassistant_dialog.
+    self.ui.highlight:addToHighlightDialog("koassistant_ai_note", function(reader_highlight_instance)
+      return {
+        text = Constants.koaLabel(_("AI Note"), "highlight", self.settings:readSetting("features")),
+        show_in_highlight_dialog_func = function()
+          local feats = self.settings:readSetting("features") or {}
+          return feats.show_ai_note_in_highlight ~= false
+        end,
+        hold_callback = function()
+          UIManager:show(InfoMessage:new{
+            text = _("Pick a note prompt (Key Concepts, Explain Simply, Takeaways…) or ask your own. The answer is saved to this book's notebook and sent to QuickNote."),
+          })
+        end,
+        callback = function()
+          local st = reader_highlight_instance.selected_text
+          local selected_text = st and st.text
+          if not selected_text or selected_text == "" then return end
+          local capture = {
+            text = selected_text,
+            selection_data = {
+              text = st.text, pos0 = st.pos0, pos1 = st.pos1, sboxes = st.sboxes,
+              pboxes = st.pboxes, ext = st.ext, drawer = st.drawer, color = st.color,
+            },
+            -- while the selection is alive (onClose clears it)
+            sc_window = Dialogs.fetchSelectionContextWindow(self.ui, selected_text),
+          }
+          reader_highlight_instance:onClose()
+          self:ensureInitialized()
+          self:showAINotePicker(capture)
+        end,
+      }
+    end)
+
     -- The old hardcoded "Generate Image" button is RETIRED (2026-08-13): image
     -- generation is the `image_gen` ACTION now — membership/order via the
     -- Highlight Menu manager, provider-capability gate in the action getters
@@ -1670,6 +1712,8 @@ function AskGPT:initSettings()
   -- Initialize Notebook module with plugin settings reference
   local Notebook = require("koassistant.chat.notebook")
   Notebook.init(self.settings)
+  -- llm-note fork: QuickNote mirror reads the live settings the same way
+  require("koassistant.integrations.quicknote").init(self.settings)
 
   -- Update the configuration with settings values
   self:updateConfigFromSettings()
@@ -16551,6 +16595,8 @@ end
 --- with the radio on, so a sleep inside the delay keeps it for the next
 --- reconnect. Never returns true (broadcast).
 function AskGPT:onNetworkConnected()
+  -- llm-note fork: notes taken offline go out once the connection settles
+  UIManager:scheduleIn(5, function() self:flushQuickNoteOutbox(false) end)
   local file = self.ui and self.ui.document and self.ui.document.file
   if not file then return end
   local XrayAuto = require("koassistant.xray.xray_auto")
@@ -21092,7 +21138,7 @@ end
 -- @param highlighted_text: The selected text
 -- @param context: Optional surrounding context (for dictionary actions)
 -- @param selection_data: Optional selection position data (for "Save to Note" feature)
-function AskGPT:executeQuickAction(action, highlighted_text, context, selection_data, sc_window, run_variant)
+function AskGPT:executeQuickAction(action, highlighted_text, context, selection_data, sc_window, run_variant, extra_opts)
   -- Scrub stale cross-context state for highlight context (default context)
   configuration.features = configuration.features or {}
   self:_scrubContextFeatures(configuration.features)
@@ -21113,8 +21159,240 @@ function AskGPT:executeQuickAction(action, highlighted_text, context, selection_
     return
   end
   -- run_variant: a run option from the hold menu (B345)
-  Dialogs.executeDirectAction(self.ui, action, highlighted_text, configuration, self,
-    run_variant and { run_variant = run_variant } or nil)
+  -- extra_opts (llm-note fork): { additional_input = string } from the AI Note picker
+  local opts = run_variant and { run_variant = run_variant } or nil
+  if extra_opts then
+    opts = opts or {}
+    for k, v in pairs(extra_opts) do opts[k] = v end
+  end
+  Dialogs.executeDirectAction(self.ui, action, highlighted_text, configuration, self, opts)
+end
+
+-- ── AI Note (llm-note fork) ────────────────────────────────────────────────
+-- A highlight-menu button that opens one-tap note prompts (Actions.NOTE_ACTION_IDS):
+-- typing on e-ink is slow, so the common questions are buttons. The answer saves
+-- itself to the notebook and QuickNote (history.auto_note, dialogs.lua).
+
+--- Run a note action on a captured selection.
+--- @param capture table { text, selection_data, sc_window }
+--- @param additional_input string|nil the reader's own question ("Ask my own…")
+function AskGPT:runNoteAction(action, capture, additional_input)
+  NetworkMgr:runWhenConnected(function()
+    self:updateConfigFromSettings()
+    self:executeQuickAction(action, capture.text, nil, capture.selection_data,
+      capture.sc_window, nil,
+      additional_input and { additional_input = additional_input } or nil)
+  end)
+end
+
+--- "Ask my own…": a short typed question, answered and saved like the presets.
+function AskGPT:showAINoteQuestion(capture)
+  local action = self.action_service:getAction("highlight", "note_ask")
+  if not action then return end
+  local InputDialog = require("ui/widget/inputdialog")
+  local dialog
+  dialog = InputDialog:new{
+    title = _("Your question or comment"),
+    input_hint = _("e.g. Why does the author call this a paradox?"),
+    buttons = {{
+      {
+        text = _("Cancel"),
+        id = "close",
+        callback = function() UIManager:close(dialog) end,
+      },
+      {
+        text = _("Ask & save"),
+        is_enter_default = true,
+        callback = function()
+          local question = dialog:getInputText()
+          UIManager:close(dialog)
+          question = question and question:match("^%s*(.-)%s*$") or ""
+          if question == "" then return end
+          self:runNoteAction(action, capture, question)
+        end,
+      },
+    }},
+  }
+  UIManager:show(dialog)
+  dialog:onShowKeyboard()
+end
+
+--- "Just save it": the passage alone, to the notebook (and QuickNote), no AI.
+function AskGPT:saveNoteHighlightOnly(capture)
+  local doc_path = self.ui and self.ui.document and self.ui.document.file
+  if not doc_path then return end
+  local Notebook = require("koassistant.chat.notebook")
+  local ChatGPTViewer = require("koassistant.ui.chatgptviewer")
+  local props = self.ui.doc_props or {}
+  ChatGPTViewer.appendSnippetToNotebook(doc_path, capture.text, {
+    page_info = Notebook.getPageInfo(self.ui),
+    book_title = props.display_title or props.title,
+    book_author = props.authors,
+  })
+end
+
+--- The picker: preset note prompts two per row, then Ask my own… / Just save it.
+function AskGPT:showAINotePicker(capture)
+  local ButtonDialog = require("ui/widget/buttondialog")
+  local Actions = require("koassistant.prompts.actions")
+  local dialog
+  local rows, row = {}, {}
+  for _idx, id in ipairs(Actions.NOTE_ACTION_IDS) do
+    local action = self.action_service:getAction("highlight", id)
+    if action and action.enabled ~= false then
+      table.insert(row, {
+        text = action.text,
+        callback = function()
+          UIManager:close(dialog)
+          self:runNoteAction(action, capture)
+        end,
+        hold_callback = function()
+          UIManager:show(InfoMessage:new{ text = action.description or action.text })
+        end,
+      })
+      if #row == 2 then
+        table.insert(rows, row)
+        row = {}
+      end
+    end
+  end
+  if #row > 0 then table.insert(rows, row) end
+  table.insert(rows, {
+    {
+      text = _("Ask my own…"),
+      callback = function()
+        UIManager:close(dialog)
+        self:showAINoteQuestion(capture)
+      end,
+    },
+    {
+      text = _("Just save it"),
+      callback = function()
+        UIManager:close(dialog)
+        self:saveNoteHighlightOnly(capture)
+      end,
+    },
+  })
+  local preview = capture.text or ""
+  if #preview > 80 then
+    preview = preview:sub(1, 80):gsub("[\128-\191]+$", "") .. "…"
+  end
+  dialog = ButtonDialog:new{
+    title = T(_("AI Note: “%1”"), preview),
+    title_align = "center",
+    buttons = rows,
+  }
+  UIManager:show(dialog)
+end
+
+--- Settings → QuickNote Sync rows (llm-note fork)
+function AskGPT:_editQuickNoteSetting(key, title, hint, touchmenu_instance, validate)
+  local InputDialog = require("ui/widget/inputdialog")
+  local features = self.settings:readSetting("features") or {}
+  local dialog
+  dialog = InputDialog:new{
+    title = title,
+    input = features[key] or "",
+    input_hint = hint,
+    buttons = {{
+      { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+      {
+        text = _("Save"),
+        is_enter_default = true,
+        callback = function()
+          local value = (dialog:getInputText() or ""):match("^%s*(.-)%s*$")
+          if value ~= "" and validate then
+            local problem = validate(value)
+            if problem then
+              UIManager:show(InfoMessage:new{ text = problem, timeout = 3 })
+              return
+            end
+          end
+          UIManager:close(dialog)
+          local f = self.settings:readSetting("features") or {}
+          f[key] = value ~= "" and value or nil
+          self.settings:saveSetting("features", f)
+          self.settings:flush()
+          self:updateConfigFromSettings()
+          if touchmenu_instance then touchmenu_instance:updateItems() end
+        end,
+      },
+    }},
+  }
+  UIManager:show(dialog)
+  dialog:onShowKeyboard()
+end
+
+function AskGPT:showQuickNoteServerDialog(touchmenu_instance)
+  local QuickNote = require("koassistant.integrations.quicknote")
+  self:_editQuickNoteSetting("quicknote_server_url", _("QuickNote server"),
+    QuickNote.DEFAULT_SERVER, touchmenu_instance, function(v)
+      if not v:match("^https?://") then return _("The address starts with https://") end
+    end)
+end
+
+function AskGPT:showQuickNoteKeyDialog(touchmenu_instance)
+  self:_editQuickNoteSetting("quicknote_api_key", _("QuickNote API key"),
+    "qn_…", touchmenu_instance, function(v)
+      if not v:match("^qn_") then return _("QuickNote API keys start with qn_") end
+    end)
+end
+
+function AskGPT:testQuickNoteConnection()
+  local QuickNote = require("koassistant.integrations.quicknote")
+  if not QuickNote.apiKey(QuickNote.features()) then
+    UIManager:show(InfoMessage:new{ text = _("Set an API key first."), timeout = 3 })
+    return
+  end
+  NetworkMgr:runWhenOnline(function()
+    UIManager:show(Notification:new{ text = _("Checking QuickNote…"), timeout = 2 })
+    QuickNote.testConnection(nil, function(ok, message)
+      UIManager:show(InfoMessage:new{
+        text = ok and T(_("Connected to %1."), QuickNote.serverUrl(QuickNote.features()))
+          or T(_("QuickNote check failed: %1"), message or "?"),
+        timeout = ok and 3 or 6,
+      })
+    end)
+  end)
+end
+
+function AskGPT:flushQuickNoteOutboxManual(touchmenu_instance)
+  NetworkMgr:runWhenOnline(function()
+    self:flushQuickNoteOutbox(true)
+    if touchmenu_instance then
+      UIManager:scheduleIn(3, function() touchmenu_instance:updateItems() end)
+    end
+  end)
+end
+
+function AskGPT:discardQuickNoteOutbox(touchmenu_instance)
+  require("koassistant.integrations.quicknote").clearOutbox()
+  if touchmenu_instance then touchmenu_instance:updateItems() end
+end
+
+--- Send whatever the QuickNote outbox holds (Wi-Fi back, plugin start, Settings).
+--- @param manual boolean toast the outcome even when nothing was pending
+function AskGPT:flushQuickNoteOutbox(manual)
+  local QuickNote = require("koassistant.integrations.quicknote")
+  if not QuickNote.isEnabled(QuickNote.features()) then
+    if manual then
+      UIManager:show(InfoMessage:new{
+        text = _("QuickNote sync is off, or no API key is set."),
+        timeout = 3,
+      })
+    end
+    return
+  end
+  if not manual and QuickNote.pendingCount() == 0 then return end
+  QuickNote.flush(nil, function(sent, remaining, err)
+    if manual and err == "offline" then
+      UIManager:show(InfoMessage:new{ text = _("Wi-Fi is off. Notes stay queued."), timeout = 3 })
+    elseif manual and sent == 0 and remaining == 0 and not err then
+      UIManager:show(Notification:new{ text = _("QuickNote: nothing pending"), timeout = 2 })
+    elseif sent > 0 or manual then
+      QuickNote.notify(sent, remaining, err)
+    end
+  end)
 end
 
 function AskGPT:restoreDefaultPrompts()

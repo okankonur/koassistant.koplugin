@@ -195,6 +195,13 @@ Registry.entries = {
         notes = "Machine-owned cache of provider-reported model metadata (OpenRouter supported_parameters). Safe to delete; re-fetched on demand.",
     },
     {
+        id = "quicknote_outbox", label = "QuickNote outbox",
+        location = "settings_dir", ref = "koassistant_quicknote_outbox.lua",
+        category = "internal", backup = false,
+        reset_in = { "wipe_all" }, uninstall = true,
+        notes = "llm-note fork: book notes waiting to be sent to QuickNote (koassistant/integrations/quicknote.lua). Emptied as notes go out.",
+    },
+    {
         id = "pinned_general", label = "Pinned (general)",
         location = "settings_dir", ref = "koassistant_pinned_general.lua",
         category = "artifacts", backup = true,

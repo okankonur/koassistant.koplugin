@@ -485,6 +485,8 @@ local function ensureMarkdownViewer()
 end
 
 local UpdateChecker = {}
+-- llm-note fork marker (see checkForUpdates / performUpdate)
+UpdateChecker.LLM_NOTE_FORK = true
 
 -- Pending update info (deferred if streaming is active)
 UpdateChecker.pending_update = nil
@@ -1760,6 +1762,14 @@ end
 performUpdate = function(update_info)
     loadUI()
     getBinPaths()
+    -- llm-note fork: never overwrite the fork with an upstream release
+    if UpdateChecker.LLM_NOTE_FORK then
+        UIManager:show(InfoMessage:new{
+            text = _("This is the llm-note fork of KOAssistant. Installing an upstream release would remove QuickNote Sync and AI Note. Merge upstream into the fork and copy it to the device instead."),
+            timeout = 8,
+        })
+        return
+    end
     -- Guard: don't update git-based dev installs (would destroy repo). B379:
     -- a worktree or submodule checkout has a .git FILE
     if lfs.attributes(plugin_dir .. ".git", "mode") ~= nil then
@@ -1951,6 +1961,13 @@ performUpdate = function(update_info)
 end
 
 function UpdateChecker.checkForUpdates(auto, include_prereleases)
+    -- llm-note fork: upstream releases would replace the QuickNote/AI Note
+    -- changes, so the silent background check is off (a manual check still
+    -- shows what upstream has; installing it is refused in performUpdate)
+    if auto and UpdateChecker.LLM_NOTE_FORK then
+        logger.dbg("UpdateChecker: llm-note fork, skipping auto-check")
+        return
+    end
     -- Prevent duplicate/concurrent auto-checks within the same session. The DONE
     -- flag is only set on a successful check (see the fetch callback) so a failed
     -- check gets retried on the next plugin init; INFLIGHT guards concurrency

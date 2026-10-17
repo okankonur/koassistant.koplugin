@@ -2130,6 +2130,121 @@ local SettingsSchema = {
             },
         },
 
+        -- QuickNote Sync submenu (llm-note fork): book notes → QuickNote →
+        -- (mac-agent) Apple Notes. koassistant/integrations/quicknote.lua
+        {
+            id = "quicknote_sync",
+            type = "submenu",
+            text = _("QuickNote Sync"),
+            emoji = "📝",
+            items = {
+                {
+                    id = "quicknote_enabled",
+                    type = "toggle",
+                    text = _("Send book notes to QuickNote"),
+                    path = "features.quicknote_enabled",
+                    default = false,
+                    help_text = _("Notebook saves, AI Note answers and saved highlights are also sent to your QuickNote server, tagged #koreader. Notes taken offline wait in a queue and go out when Wi-Fi is back. The Mac agent mirrors them into Apple Notes."),
+                },
+                {
+                    id = "quicknote_server_action",
+                    type = "action",
+                    text_func = function(plugin)
+                        local QuickNote = require("koassistant.integrations.quicknote")
+                        local f = plugin.settings:readSetting("features") or {}
+                        return T(_("Server: %1"), QuickNote.serverUrl(f))
+                    end,
+                    callback = "showQuickNoteServerDialog",
+                    keep_menu_open = true,
+                },
+                {
+                    id = "quicknote_key_action",
+                    type = "action",
+                    text_func = function(plugin)
+                        local QuickNote = require("koassistant.integrations.quicknote")
+                        local f = plugin.settings:readSetting("features") or {}
+                        local masked = QuickNote.maskedKey(f)
+                        return masked and T(_("API key: %1"), masked) or _("API key: not set")
+                    end,
+                    help_text = _("A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own."),
+                    callback = "showQuickNoteKeyDialog",
+                    keep_menu_open = true,
+                },
+                {
+                    id = "quicknote_test",
+                    type = "action",
+                    text = _("Test connection"),
+                    callback = "testQuickNoteConnection",
+                    keep_menu_open = true,
+                },
+                {
+                    id = "quicknote_flush",
+                    type = "action",
+                    text_func = function()
+                        local n = require("koassistant.integrations.quicknote").pendingCount()
+                        return T(_("Send pending notes (%1)"), n)
+                    end,
+                    callback = "flushQuickNoteOutboxManual",
+                    keep_menu_open = true,
+                },
+                {
+                    id = "quicknote_discard",
+                    type = "action",
+                    text = _("Discard pending notes"),
+                    confirm = true,
+                    confirm_text = _("Delete every note still waiting to be sent to QuickNote? The notebook copies are kept."),
+                    callback = "discardQuickNoteOutbox",
+                    keep_menu_open = true,
+                    separator = true,
+                },
+                {
+                    id = "quicknote_mirror_notebook",
+                    type = "toggle",
+                    text = _("Send notebook saves"),
+                    path = "features.quicknote_mirror_notebook",
+                    default = true,
+                    help_text = _("Every Add Chat to Notebook (and every AI Note answer) is also sent to QuickNote. Off: only AI Note answers whose notebook save is off, and the chat window's Send to QuickNote, are sent."),
+                },
+                {
+                    id = "quicknote_mirror_highlights",
+                    type = "toggle",
+                    text = _("Send saved highlights"),
+                    path = "features.quicknote_mirror_highlights",
+                    default = true,
+                    help_text = _("A passage saved with Add to notebook or AI Note → Just save it is sent as a highlight note, without an AI answer."),
+                },
+                {
+                    id = "quicknote_include_model",
+                    type = "toggle",
+                    text = _("Include the model name"),
+                    path = "features.quicknote_include_model",
+                    default = false,
+                    separator = true,
+                },
+                {
+                    id = "ai_note_header",
+                    type = "header",
+                    text = _("AI Note"),
+                },
+                {
+                    id = "show_ai_note_in_highlight",
+                    type = "toggle",
+                    text = _("Show AI Note in highlight menu"),
+                    path = "features.show_ai_note_in_highlight",
+                    default = true,
+                    help_text = _("AI Note opens one-tap note prompts for the selection: Key Concepts, Explain Simply, Takeaways, Why It Matters, Define Terms, Counter-argument, Real Example, Reflection Questions, or your own question. Edit or hide the prompts in the action manager (they are ordinary highlight actions)."),
+                },
+                {
+                    id = "note_actions_save_notebook",
+                    type = "toggle",
+                    text = _("Save AI Note answers to the notebook"),
+                    path = "features.note_actions_save_notebook",
+                    default = true,
+                    help_text = _("On: an AI Note answer is added to the book's notebook (and from there sent to QuickNote). Off: it goes to QuickNote only."),
+                },
+            },
+        },
+
         -- (Library Settings moved to Reading & Library section above)
 
         -- Privacy & Data submenu

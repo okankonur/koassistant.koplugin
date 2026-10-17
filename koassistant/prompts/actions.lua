@@ -738,6 +738,115 @@ Use plain language first, adding the technical term in parentheses when it helps
 }
 
 -- ============================================================
+-- Note actions (llm-note fork)
+-- ============================================================
+-- One-tap note-taking presets for e-ink, where typing a question is slow. They
+-- open from the highlight menu's "AI Note" button (main.lua:showAINotePicker);
+-- auto_note = true makes the answer save itself to the book's notebook, which
+-- mirrors to QuickNote (koassistant/integrations/quicknote.lua) and from there
+-- to Apple Notes (mac-agent/). Ordinary actions otherwise: the action manager
+-- can edit, hide or add them to any menu.
+local function noteAction(id, text, description, prompt, extra)
+    local action = {
+        id = id,
+        text = text,
+        description = description,
+        context = "highlight",
+        prompt = prompt,
+        auto_note = true,
+        enable_web_search = false,
+        reasoning_config = "off",  -- note-sized answers; speed matters on e-ink
+        include_book_context = true,
+        api_params = { temperature = 0.5 },
+        builtin = true,
+    }
+    for k, v in pairs(extra or {}) do action[k] = v end
+    return action
+end
+
+Actions.highlight.note_key_concepts = noteAction("note_key_concepts", _("Key Concepts"),
+    _("Explains the key concepts in the selected snippet, one short entry per concept, and saves it as a note."),
+    [[Explain the key concepts in this snippet. For each concept, give its name in bold, then one or two sentences on what it means and how this text uses it. Only the concepts that matter for understanding the snippet; at most five.
+
+"{highlighted_text}"
+
+Write it as a note I will reread later: no preamble, no closing remarks.]])
+
+Actions.highlight.note_explain = noteAction("note_explain", _("Explain Simply"),
+    _("A plain-language explanation of the snippet, saved as a note."),
+    [[Explain this snippet in plain language, as a short note I will reread later. Say what it means and what the author is getting at; keep the author's meaning, drop the jargon.
+
+"{highlighted_text}"
+
+At most 120 words, no preamble.]])
+
+Actions.highlight.note_takeaways = noteAction("note_takeaways", _("Takeaways"),
+    _("Turns the snippet into two to four bullet-point takeaways worth remembering, saved as a note."),
+    [[Turn this snippet into two to four bullet-point takeaways worth remembering. Each bullet one sentence, concrete, in my words rather than a paraphrase of the text.
+
+"{highlighted_text}"
+
+Only the bullets.]])
+
+Actions.highlight.note_why_it_matters = noteAction("note_why_it_matters", _("Why It Matters"),
+    _("Explains what the snippet contributes to the book's argument or story, saved as a note."),
+    [[Explain why this passage matters: what it contributes to the book's argument or story, and what follows from it. Use what you know about the book, but do not reveal anything that happens later in it.
+
+"{highlighted_text}"
+
+Two short paragraphs at most, no preamble.]])
+
+Actions.highlight.note_define_terms = noteAction("note_define_terms", _("Define Terms"),
+    _("Defines the difficult words, technical terms and names in the snippet, saved as a note."),
+    [[Define the difficult words, technical terms, names and references in this snippet, as they are used here. A bulleted list: the term in bold, then a one-line definition. Skip ordinary words.
+
+"{highlighted_text}"
+
+Only the list.]], { api_params = { temperature = 0.3 } })
+
+Actions.highlight.note_counterpoint = noteAction("note_counterpoint", _("Counter-argument"),
+    _("Gives the strongest objection or alternative view to the snippet's claim, saved as a note."),
+    [[State the claim this snippet makes in one sentence, then give the strongest counter-argument or alternative view a thoughtful critic would raise, and who holds it if it is a known position.
+
+"{highlighted_text}"
+
+At most 150 words, no preamble.]])
+
+Actions.highlight.note_example = noteAction("note_example", _("Real Example"),
+    _("Illustrates the snippet's idea with one concrete real-world example, saved as a note."),
+    [[Give one concrete, real-world example that illustrates the idea in this snippet, and say in a sentence how it maps onto the idea.
+
+"{highlighted_text}"
+
+At most 120 words, no preamble.]], { api_params = { temperature = 0.7 } })
+
+Actions.highlight.note_questions = noteAction("note_questions", _("Reflection Questions"),
+    _("Two or three questions the snippet raises, to think about later, saved as a note."),
+    [[Pose two or three thought-provoking questions this snippet raises for a reader, each followed by one line on why it is worth thinking about.
+
+"{highlighted_text}"
+
+Only the questions, numbered.]], { api_params = { temperature = 0.7 } })
+
+-- The picker's "Ask my own…": the typed question rides the [Additional user
+-- input] tail, which the notebook entry shows as the reader's own question
+Actions.highlight.note_ask = noteAction("note_ask", _("My Question"),
+    _("Answers your own question or comment about the snippet, saved as a note."),
+    [[I am reading this passage and have a question or comment about it (below). Answer it directly and briefly, as a note I will reread later.
+
+"{highlighted_text}"
+
+At most 150 words, no preamble.]])
+
+-- Picker order (main.lua:showAINotePicker), two per row
+Actions.NOTE_ACTION_IDS = {
+    "note_key_concepts", "note_explain",
+    "note_takeaways", "note_why_it_matters",
+    "note_define_terms", "note_counterpoint",
+    "note_example", "note_questions",
+}
+
+-- ============================================================
 -- X-Ray Prompt Template (Two-Track: Incremental + Complete)
 -- ============================================================
 -- One template with __MARKER__ placeholders, two sets of replacements:
