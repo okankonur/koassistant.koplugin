@@ -6,16 +6,22 @@ through its capture endpoint:
 
     POST <server>/api/v1/notes/capture
     Authorization: Bearer qn_<key>
-    { "title": "...", "body": "<markdown>" }
+    { "title": "...", "body": "<markdown>",
+      "client_request_id": "<outbox item id>", "tags": ["koreader"] }
 
 Every note goes through a small persistent outbox first, so a note taken with
 Wi-Fi off (or while the server is down) is sent on the next connection. The
 upload itself runs in a subprocess (BaseHandler.fetchAsync), so the e-ink UI
 never blocks on the network.
 
+The outbox item's id goes out as client_request_id: when a capture succeeds
+but its response is lost, the retry gets the original note back (200) instead
+of creating a duplicate. Servers that predate the field ignore it.
+
 Notes carry a `#koreader` marker line; the Mac agent (mac-agent/ in the
 llm-note repo) uses it to pick book notes out of the QuickNote feed and mirror
-them into an Apple Notes folder.
+them into an Apple Notes folder. The same word is also sent as a QuickNote
+tag, so the notes group under it in the QuickNote apps.
 
 @module koassistant.integrations.quicknote
 ]]
@@ -28,6 +34,8 @@ QuickNote.DEFAULT_SERVER = "https://note.okankonur.com"
 QuickNote.CAPTURE_PATH = "/api/v1/notes/capture"
 QuickNote.PULL_PATH = "/api/v1/sync/pull"
 QuickNote.MARKER = "#koreader"
+-- User tags attached to every captured note (server lowercases them).
+QuickNote.TAGS = { "koreader" }
 QuickNote.OUTBOX_FILE = "koassistant_quicknote_outbox.lua"
 -- An item that keeps failing with a non-retryable error is dropped after this
 -- many tries so one bad note cannot wedge the queue forever.
@@ -253,10 +261,22 @@ function QuickNote.classifyStatus(status)
     return "retry"
 end
 
+--- The capture request body for an outbox item. Pure (unit-tested).
+--- The item id is stable across retries, which is what makes it a usable
+--- idempotency key.
+function QuickNote.capturePayload(item)
+    return {
+        title = item.title,
+        body = item.body,
+        client_request_id = item.id,
+        tags = QuickNote.TAGS,
+    }
+end
+
 local function postItem(features, item, on_done)
     local json = require("json")
     local BaseHandler = require("koassistant.api.base")
-    local payload = json.encode({ title = item.title, body = item.body })
+    local payload = json.encode(QuickNote.capturePayload(item))
     local headers = authHeaders(features, true)
     headers["Content-Length"] = tostring(#payload)
     BaseHandler.fetchAsync(QuickNote.serverUrl(features) .. QuickNote.CAPTURE_PATH, {

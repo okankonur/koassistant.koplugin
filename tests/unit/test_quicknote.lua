@@ -4,6 +4,7 @@ Unit Tests for koassistant/integrations/quicknote.lua (llm-note fork)
 Pure parts only (no network, no outbox file):
 - QuickNote.buildNote(): title, quote, question, answer, footer, #koreader marker
 - QuickNote.classifyStatus(): which capture responses retry, drop or stop
+- QuickNote.capturePayload(): client_request_id + tags on the capture request
 - settings helpers: serverUrl, isEnabled, maskedKey
 
 Run: lua tests/run_tests.lua --unit
@@ -123,6 +124,17 @@ local function runAll()
         TestRunner:assertEqual(QuickNote.classifyStatus(400), "drop", "malformed note")
     end)
 
+    TestRunner:test("capturePayload: item id as client_request_id, koreader tag, body keeps the marker", function()
+        local note = QuickNote.buildNote({ response = "x", timestamp = "t" })
+        local p = QuickNote.capturePayload({ id = "abc-1-0011", title = note.title, body = note.body, attempts = 3 })
+        TestRunner:assertEqual(p.client_request_id, "abc-1-0011", "client_request_id")
+        TestRunner:assertEqual(#p.tags, 1, "one tag")
+        TestRunner:assertEqual(p.tags[1], "koreader", "koreader tag")
+        TestRunner:assertEqual(p.title, note.title, "title")
+        TestRunner:assertEqual(p.body:sub(-#QuickNote.MARKER), QuickNote.MARKER, "marker line kept for the Mac agent")
+        TestRunner:assertEqual(p.attempts, nil, "outbox bookkeeping not sent")
+    end)
+
     TestRunner:test("settings helpers", function()
         TestRunner:assertEqual(QuickNote.serverUrl({}), QuickNote.DEFAULT_SERVER, "default server")
         TestRunner:assertEqual(QuickNote.serverUrl({ quicknote_server_url = " https://qn.example.com// " }),
@@ -141,13 +153,22 @@ local function runAll()
     for _idx, name in ipairs(STUBBED) do saved[name] = package.loaded[name] end
 
     local files = {}  -- path -> data, so reopening the outbox sees earlier writes
+    -- Values are copied in and out, like the real LuaSettings round-tripping
+    -- through its file: a table read from one open must not change when a
+    -- later open saves.
+    local function copy(v)
+        if type(v) ~= "table" then return v end
+        local t = {}
+        for k, x in pairs(v) do t[k] = copy(x) end
+        return t
+    end
     package.loaded["luasettings"] = {
         open = function(_, path)
             files[path] = files[path] or {}
             local store = files[path]
             return {
-                readSetting = function(_, k) return store[k] end,
-                saveSetting = function(_, k, v) store[k] = v end,
+                readSetting = function(_, k) return copy(store[k]) end,
+                saveSetting = function(_, k, v) store[k] = copy(v) end,
                 flush = function() end,
             }
         end,
@@ -159,7 +180,9 @@ local function runAll()
     package.loaded["koassistant.api.base"] = {
         fetchAsync = function(url, opts, on_done)
             local json = require("json")
-            table.insert(posted, { url = url, title = json.decode(opts.body).title, auth = opts.headers.Authorization })
+            local req = json.decode(opts.body)
+            table.insert(posted, { url = url, title = req.title, auth = opts.headers.Authorization,
+                client_request_id = req.client_request_id, tags = req.tags })
             if on_post then local f = on_post; on_post = nil; f() end
             local r = table.remove(responses, 1) or { 201, "{}" }
             on_done(r[1], r[2])
@@ -189,6 +212,11 @@ local function runAll()
         TestRunner:assertEqual(posted[1].title, "one", "order")
         TestRunner:assertEqual(posted[1].url, "https://qn.example.com/api/v1/notes/capture", "url")
         TestRunner:assertEqual(posted[1].auth, "Bearer qn_test", "auth header")
+        TestRunner:assertEqual(type(posted[1].tags), "table", "tags sent as a list")
+        TestRunner:assertEqual(posted[1].tags[1], "koreader", "koreader tag")
+        TestRunner:assertEqual(type(posted[1].client_request_id), "string", "client_request_id sent")
+        TestRunner:assertEqual(posted[1].client_request_id == posted[2].client_request_id, false,
+            "each note has its own client_request_id")
     end)
 
     TestRunner:test("flush: a network error stops the pass and keeps the order", function()
@@ -198,9 +226,12 @@ local function runAll()
         TestRunner:assertEqual(r.sent, 1, "first sent")
         TestRunner:assertEqual(r.remaining, 2, "two left")
         TestRunner:assertEqual(#posted, 2, "third not tried")
+        TestRunner:assertEqual(posted[2].title, "two", "second note tried next")
         local r2 = flush()
         TestRunner:assertEqual(r2.sent, 2, "retry sends the rest")
         TestRunner:assertEqual(posted[3].title, "two", "retry resumes at the failed note")
+        TestRunner:assertEqual(posted[3].client_request_id, posted[2].client_request_id,
+            "the retry reuses the failed attempt's client_request_id")
     end)
 
     TestRunner:test("flush: a rejected key stops and keeps every note", function()
