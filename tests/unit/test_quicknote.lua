@@ -6,6 +6,7 @@ Pure parts only (no network, no outbox file):
 - QuickNote.classifyStatus(): which capture responses retry, drop or stop
 - QuickNote.capturePayload(): client_request_id + tags on the capture request
 - settings helpers: serverUrl, isEnabled, maskedKey
+- the apikeys.lua key: fallback, precedence, auto-enable on init
 
 Run: lua tests/run_tests.lua --unit
 ]]
@@ -67,6 +68,8 @@ end
 
 local function runAll()
     print("\n=== QuickNote integration ===")
+    -- hermetic: a developer's real apikeys.lua must not supply a key
+    QuickNote._setFileKeyLoaderForTests(function() return nil end)
 
     TestRunner:test("buildNote: AI note has title, quote, question, answer, footer, marker", function()
         local note = QuickNote.buildNote({
@@ -143,6 +146,55 @@ local function runAll()
         TestRunner:assertEqual(QuickNote.isEnabled({ quicknote_enabled = true, quicknote_api_key = "qn_abc" }), true, "on with key")
         TestRunner:assertEqual(QuickNote.isEnabled({ quicknote_api_key = "qn_abc" }), false, "key but off")
         TestRunner:assertEqual(QuickNote.maskedKey({ quicknote_api_key = "qn_abcdefghijklmnop" }), "qn_ab…mnop", "masked")
+    end)
+
+    TestRunner:test("apikeys.lua: quicknote entry is read; placeholders and odd values ignored", function()
+        local saved_mod = package.loaded["apikeys"]
+        QuickNote._setFileKeyLoaderForTests(nil)  -- the real reader, over a stubbed module
+        package.loaded["apikeys"] = { anthropic = "sk-x", quicknote = "  qn_fromfile  " }
+        TestRunner:assertEqual(QuickNote.fileKey(), "qn_fromfile", "plain string, trimmed")
+        package.loaded["apikeys"] = { quicknote = { key = "qn_aliased", alias = "kindle" } }
+        TestRunner:assertEqual(QuickNote.fileKey(), "qn_aliased", "{ key = ... } shape")
+        package.loaded["apikeys"] = { quicknote = "YOUR_QUICKNOTE_API_KEY" }
+        TestRunner:assertEqual(QuickNote.fileKey(), nil, "sample placeholder")
+        package.loaded["apikeys"] = { anthropic = "sk-x" }
+        TestRunner:assertEqual(QuickNote.fileKey(), nil, "no entry")
+        package.loaded["apikeys"] = saved_mod
+        QuickNote._setFileKeyLoaderForTests(function() return nil end)
+    end)
+
+    TestRunner:test("apikeys.lua: Settings key wins; file key alone enables when switched on", function()
+        QuickNote._setFileKeyLoaderForTests(function() return "qn_file" end)
+        TestRunner:assertEqual(QuickNote.apiKey({}), "qn_file", "file fallback")
+        TestRunner:assertEqual(QuickNote.keySource({}), "file", "source file")
+        TestRunner:assertEqual(QuickNote.apiKey({ quicknote_api_key = "qn_typed" }), "qn_typed", "typed wins")
+        TestRunner:assertEqual(QuickNote.keySource({ quicknote_api_key = "qn_typed" }), "settings", "source settings")
+        TestRunner:assertEqual(QuickNote.isEnabled({ quicknote_enabled = true }), true, "enabled via file key")
+        QuickNote._setFileKeyLoaderForTests(function() return nil end)
+        TestRunner:assertEqual(QuickNote.keySource({}), nil, "no key anywhere")
+    end)
+
+    TestRunner:test("init: a file key turns sync on once; an explicit off stays off", function()
+        local function fakeSettings(features)
+            local store = { features = features }
+            return {
+                readSetting = function(_, k) return store[k] end,
+                saveSetting = function(_, k, v) store[k] = v end,
+                flush = function() end,
+            }, store
+        end
+        QuickNote._setFileKeyLoaderForTests(function() return "qn_file" end)
+        local st, store = fakeSettings({})
+        QuickNote.init(st)
+        TestRunner:assertEqual(store.features.quicknote_enabled, true, "switched on")
+        st, store = fakeSettings({ quicknote_enabled = false })
+        QuickNote.init(st)
+        TestRunner:assertEqual(store.features.quicknote_enabled, false, "reader's off kept")
+        QuickNote._setFileKeyLoaderForTests(function() return nil end)
+        st, store = fakeSettings({})
+        QuickNote.init(st)
+        TestRunner:assertEqual(store.features.quicknote_enabled, nil, "no key: untouched")
+        QuickNote.init(nil)
     end)
 
     -- ── flush: the outbox against a scripted server ─────────────────────────
@@ -277,6 +329,7 @@ local function runAll()
     end)
 
     for _idx, name in ipairs(STUBBED) do package.loaded[name] = saved[name] end
+    QuickNote._setFileKeyLoaderForTests(nil)
 
     print(string.format("\n=== Results: %d passed, %d failed ===\n", TestRunner.passed, TestRunner.failed))
     return TestRunner.failed == 0

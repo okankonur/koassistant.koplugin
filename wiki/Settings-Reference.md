@@ -274,7 +274,7 @@ Explained on [Conversations, Notebooks and Export](Conversations-Notebooks-and-E
 |---|---|---|---|---|---|
 | Send book notes to QuickNote | toggle | Notebook saves, AI Note answers and saved highlights are also sent to your QuickNote server, tagged #koreader. Notes taken offline wait in a queue and go out when Wi-Fi is back. The Mac agent mirrors them into Apple Notes. | Off |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Server: … | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
-| API key: … / not set | action | A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own. |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| API key: … / … (apikeys.lua) / not set | action | A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own. Instead of typing it here, you can add quicknote = "qn_..." to apikeys.lua in the plugin folder from a computer; a key typed here wins over the file. |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Test connection | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Send pending notes (N) | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Discard pending notes | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |

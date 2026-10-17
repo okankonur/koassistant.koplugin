@@ -29,6 +29,12 @@
 -- it the simple way shown below, nothing changes for you.
 
 return {
+    -- QuickNote API key (llm-note fork): Settings > QuickNote Sync uses it, so
+    -- the key need not be typed on the e-reader. Sync turns on the first time
+    -- it is found; a key typed in Settings wins over this one.
+    -- Create one in the QuickNote web app: API keys (it starts with qn_)
+    quicknote = "YOUR_QUICKNOTE_API_KEY",
+
     -- Anthropic API key (Claude models)
     -- Get from: https://console.anthropic.com/
     anthropic = "YOUR_ANTHROPIC_API_KEY",

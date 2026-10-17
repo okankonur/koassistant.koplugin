@@ -177,7 +177,8 @@ function SetupWizard.probeProviderF(gui_keys, file_keys, has_oauth, is_placehold
         end
     end
     for provider, key in pairs(file_keys or {}) do
-        if type(key) == "string" and not is_placeholder(key) then
+        -- quicknote (llm-note fork) is the notes server's key, not an AI provider
+        if provider ~= "quicknote" and type(key) == "string" and not is_placeholder(key) then
             return true, T(_("apikeys.lua key for %1"), provider)
         end
     end

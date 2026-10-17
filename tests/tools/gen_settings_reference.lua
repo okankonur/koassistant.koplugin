@@ -146,7 +146,7 @@ Gen.DYNAMIC_LABELS = {
     tool_lookup_effort = "Book Tools Lookup Effort: Quick / Standard / Thorough",
     debug_display_level = "Debug Detail Level: Minimal / Names / Full",
     quicknote_server_action = "Server: …",
-    quicknote_key_action = "API key: … / not set",
+    quicknote_key_action = "API key: … / … (apikeys.lua) / not set",
     quicknote_flush = "Send pending notes (N)",
 }
 

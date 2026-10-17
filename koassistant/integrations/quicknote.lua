@@ -51,6 +51,16 @@ local _settings = nil
 --- @param settings table LuaSettings instance (plugin.settings)
 function QuickNote.init(settings)
     _settings = settings
+    -- A key in apikeys.lua (written on a computer, no e-ink typing) turns sync
+    -- on the first time it is seen. Stored, so the Settings toggle shows it and
+    -- switching it off there sticks.
+    local features = settings and settings:readSetting("features")
+    if type(features) == "table" and features.quicknote_enabled == nil
+            and QuickNote.fileKey() then
+        features.quicknote_enabled = true
+        settings:saveSetting("features", features)
+        settings:flush()
+    end
 end
 
 --- The plugin's live features table. Callers pass nothing and get the current
@@ -75,8 +85,42 @@ function QuickNote.serverUrl(features)
     return (url:gsub("/+$", ""))
 end
 
+--- The key from apikeys.lua in the plugin folder, if any:
+---     return { anthropic = "...", quicknote = "qn_..." }
+--- The sample's placeholder (anything not starting with qn_) is ignored.
+local function loadFileKey()
+    local ok, keys = pcall(require, "apikeys")
+    if not ok or type(keys) ~= "table" then return nil end
+    local value = keys.quicknote
+    if type(value) == "table" then  -- the { key = "...", alias = "..." } shape
+        value = value.key or (type(value[1]) == "table" and value[1].key)
+    end
+    local key = trim(value)
+    if key and key:match("^qn_") then return key end
+    return nil
+end
+local _file_key_loader = loadFileKey
+
+function QuickNote.fileKey()
+    return _file_key_loader()
+end
+
+--- Test seam: replace the apikeys.lua reader (nil restores it).
+function QuickNote._setFileKeyLoaderForTests(fn)
+    _file_key_loader = fn or loadFileKey
+end
+
+--- The key typed in Settings wins over the apikeys.lua one (the same rule
+--- KOAssistant applies to provider keys).
 function QuickNote.apiKey(features)
-    return trim(features and features.quicknote_api_key)
+    return trim(features and features.quicknote_api_key) or QuickNote.fileKey()
+end
+
+--- "settings" | "file" | nil
+function QuickNote.keySource(features)
+    if trim(features and features.quicknote_api_key) then return "settings" end
+    if QuickNote.fileKey() then return "file" end
+    return nil
 end
 
 --- Sync is on and has a key to send with.

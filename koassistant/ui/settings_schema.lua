@@ -2164,9 +2164,13 @@ local SettingsSchema = {
                         local QuickNote = require("koassistant.integrations.quicknote")
                         local f = plugin.settings:readSetting("features") or {}
                         local masked = QuickNote.maskedKey(f)
-                        return masked and T(_("API key: %1"), masked) or _("API key: not set")
+                        if not masked then return _("API key: not set") end
+                        if QuickNote.keySource(f) == "file" then
+                            return T(_("API key: %1 (apikeys.lua)"), masked)
+                        end
+                        return T(_("API key: %1"), masked)
                     end,
-                    help_text = _("A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own."),
+                    help_text = _("A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own. Instead of typing it here, you can add quicknote = \"qn_...\" to apikeys.lua in the plugin folder from a computer; a key typed here wins over the file."),
                     callback = "showQuickNoteKeyDialog",
                     keep_menu_open = true,
                 },
