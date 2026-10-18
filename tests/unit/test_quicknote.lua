@@ -105,6 +105,12 @@ local function runAll()
         TestRunner:assertContains(note.body, "— 2026-10-17 14:30", "footer with time only")
     end)
 
+    TestRunner:test("buildNote: several authors join on one line", function()
+        local note = QuickNote.buildNote({ response = "x", book_title = "B",
+            book_author = "Ann One\nBob Two", timestamp = "t" })
+        TestRunner:assertContains(note.body, "— *B*, Ann One, Bob Two · t", "authors joined")
+    end)
+
     TestRunner:test("buildNote: nothing to send gives nil", function()
         TestRunner:assertEqual(QuickNote.buildNote({ highlighted_text = "  ", response = "" }), nil, "empty")
         TestRunner:assertEqual(QuickNote.buildNote(nil), nil, "nil entry")

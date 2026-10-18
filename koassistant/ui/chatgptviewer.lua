@@ -5138,7 +5138,21 @@ function ChatGPTViewer:_mirrorToQuickNote(entry_data, opts)
   if not opts.force and live.quicknote_mirror_notebook == false then return false end
   if not entry_data then return false end
   local features = self.configuration and self.configuration.features or {}
-  local meta = features.book_metadata or {}
+  local meta = self._book_metadata or features.book_metadata
+  if not (meta and meta.title) then
+    -- last resort: the open book, when this chat is about it
+    local ReaderUI = require("apps/reader/readerui")
+    local rui = ReaderUI.instance
+    local doc_path = self.configuration and self.configuration.document_path
+    if rui and rui.document and rui.document.file == doc_path and rui.doc_props then
+      local author = rui.doc_props.authors
+      meta = {
+        title = rui.doc_props.display_title or rui.doc_props.title,
+        author = author and author:gsub("\n", ", ") or nil,
+      }
+    end
+  end
+  meta = meta or {}
   local entry = {}
   for k, v in pairs(entry_data) do entry[k] = v end
   entry.kind = "ai"

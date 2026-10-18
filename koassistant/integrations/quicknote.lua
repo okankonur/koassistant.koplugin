@@ -149,7 +149,8 @@ local function locationLine(entry)
     local parts = {}
     local book = trim(entry.book_title)
     if book then
-        local author = trim(entry.book_author)
+        -- KOReader keeps several authors newline-separated
+        local author = trim(entry.book_author and (entry.book_author:gsub("%s*\n%s*", ", ")))
         table.insert(parts, author and ("*" .. book .. "*, " .. author) or ("*" .. book .. "*"))
     end
     local pi = entry.page_info or {}

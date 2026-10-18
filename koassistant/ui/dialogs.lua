@@ -3414,6 +3414,10 @@ local function showResponseDialog(title, history, highlightedText, addMessage, t
         UIManager:show(chatgpt_viewer)
     end
 
+    -- llm-note fork: the book this chat is about, for the QuickNote mirror's
+    -- title (highlight actions carry it here, not in configuration.features)
+    chatgpt_viewer._book_metadata = book_metadata
+
     -- llm-note fork: a note action (AI Note picker) files its answer on its own —
     -- into the book's notebook, which mirrors to QuickNote; with the notebook
     -- off or unavailable, straight to QuickNote. Once per chat: replies in the
