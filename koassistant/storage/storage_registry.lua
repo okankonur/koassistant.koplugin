@@ -134,6 +134,7 @@ Registry.SETTINGS_SUBKEYS = {
         "_minimal_popup_prev_mode",  -- QS tile ON/OFF toggle: which on-state to restore (main.lua)
         "_image_gen_action_v1",  -- old Show-Generate-Image toggle → action dismissal seed (main.lua initSettings)
         "_kimi_region_migrated", -- pre-split kimi keys stamped kimi_region="china" (main.lua initSettings, 2026-08-14)
+        "_quicknote_menu_v1",    -- llm-note fork: highlight menu pared to model button + QuickNote (main.lua initSettings)
         "setup_wizard_completed",                            -- top-level (see TOPLEVEL_SUBKEYS)
         -- Setup Wizard v2 (koassistant/ui/setup_wizard.lua, 2026-08-11; inert
         -- until the release flip). The two _wizard_*_install/_writes records

@@ -1765,7 +1765,7 @@ performUpdate = function(update_info)
     -- llm-note fork: never overwrite the fork with an upstream release
     if UpdateChecker.LLM_NOTE_FORK then
         UIManager:show(InfoMessage:new{
-            text = _("This is the llm-note fork of KOAssistant. Installing an upstream release would remove QuickNote Sync and AI Note. Merge upstream into the fork and copy it to the device instead."),
+            text = _("This is the llm-note fork of KOAssistant. Installing an upstream release would remove QuickNote Sync and QuickNote button. Merge upstream into the fork and copy it to the device instead."),
             timeout = 8,
         })
         return
@@ -1961,7 +1961,7 @@ performUpdate = function(update_info)
 end
 
 function UpdateChecker.checkForUpdates(auto, include_prereleases)
-    -- llm-note fork: upstream releases would replace the QuickNote/AI Note
+    -- llm-note fork: upstream releases would replace the QuickNote/QuickNote button
     -- changes, so the silent background check is off (a manual check still
     -- shows what upstream has; installing it is refused in performUpdate)
     if auto and UpdateChecker.LLM_NOTE_FORK then

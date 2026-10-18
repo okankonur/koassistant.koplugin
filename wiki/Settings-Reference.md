@@ -272,18 +272,18 @@ Explained on [Conversations, Notebooks and Export](Conversations-Notebooks-and-E
 
 | Row | Type | Does | Default | Choices | Page |
 |---|---|---|---|---|---|
-| Send book notes to QuickNote | toggle | Notebook saves, AI Note answers and saved highlights are also sent to your QuickNote server, tagged #koreader. Notes taken offline wait in a queue and go out when Wi-Fi is back. The Mac agent mirrors them into Apple Notes. | Off |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| Send book notes to QuickNote | toggle | Notebook saves, QuickNote button answers and saved highlights are also sent to your QuickNote server, tagged #koreader. Notes taken offline wait in a queue and go out when Wi-Fi is back. The Mac agent mirrors them into Apple Notes. | Off |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Server: … | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | API key: … / … (apikeys.lua) / not set | action | A QuickNote API key (starts with qn_). Create a dedicated one for this device in QuickNote, so you can revoke it on its own. Instead of typing it here, you can add quicknote = "qn_..." to apikeys.lua in the plugin folder from a computer; a key typed here wins over the file. |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Test connection | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Send pending notes (N) | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Discard pending notes | action |  |  |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
-| Send notebook saves | toggle | Every Add Chat to Notebook (and every AI Note answer) is also sent to QuickNote. Off: only AI Note answers whose notebook save is off, and the chat window's Send to QuickNote, are sent. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
-| Send saved highlights | toggle | A passage saved with Add to notebook or AI Note → Just save it is sent as a highlight note, without an AI answer. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| Send notebook saves | toggle | Every Add Chat to Notebook (and every QuickNote button answer) is also sent to QuickNote. Off: only QuickNote button answers whose notebook save is off, and the chat window's Send to QuickNote, are sent. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| Send saved highlights | toggle | A passage saved with Add to notebook or QuickNote button → Just save it is sent as a highlight note, without an AI answer. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 | Include the model name | toggle |  | Off |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
-| **AI Note** | | | | | |
-| Show AI Note in highlight menu | toggle | AI Note opens one-tap note prompts for the selection: Key Concepts, Explain Simply, Takeaways, Why It Matters, Define Terms, Counter-argument, Real Example, Reflection Questions, or your own question. Edit or hide the prompts in the action manager (they are ordinary highlight actions). | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
-| Save AI Note answers to the notebook | toggle | On: an AI Note answer is added to the book's notebook (and from there sent to QuickNote). Off: it goes to QuickNote only. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| **QuickNote button** | | | | | |
+| Show QuickNote button in highlight menu | toggle | The QuickNote button opens one-tap note prompts for the selection: Key Concepts, Explain Simply, Takeaways, Why It Matters, Define Terms, Counter-argument, Real Example, Reflection Questions, or your own question. Edit or hide the prompts in the action manager (they are ordinary highlight actions). | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
+| Save QuickNote button answers to the notebook | toggle | On: a QuickNote button answer is added to the book's notebook (and from there sent to QuickNote). Off: it goes to QuickNote only. | On |  | [Conversations, Notebooks and Export](Conversations-Notebooks-and-Export) |
 
 ## Privacy & Data
 

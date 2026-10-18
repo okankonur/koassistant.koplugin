@@ -364,12 +364,12 @@ function AskGPT:init()
         end,
       }
     end)
-    -- llm-note fork: "AI Note" — one-tap note prompts (Key Concepts, Explain
+    -- llm-note fork: "QuickNote" — one-tap note prompts (Key Concepts, Explain
     -- Simply, …) whose answers save themselves to the notebook and QuickNote.
     -- Id sorts after koassistant_add_notebook and before koassistant_dialog.
     self.ui.highlight:addToHighlightDialog("koassistant_ai_note", function(reader_highlight_instance)
       return {
-        text = Constants.koaLabel(_("AI Note"), "highlight", self.settings:readSetting("features")),
+        text = _("QuickNote"),
         show_in_highlight_dialog_func = function()
           local feats = self.settings:readSetting("features") or {}
           return feats.show_ai_note_in_highlight ~= false
@@ -1643,6 +1643,35 @@ function AskGPT:initSettings()
         end
       end
       features.show_image_gen_in_highlight = nil
+      needs_save = true
+    end
+
+    -- llm-note fork: QuickNote-only highlight menu. One-time: the menu keeps the
+    -- model button and QuickNote; Chat/Action and every other quick action are
+    -- hidden. Each hidden action is dismissed so the flagged-default injection
+    -- doesn't bring it back. Menus & Buttons > Highlight menu re-adds any of them.
+    if not features._quicknote_menu_v1 then
+      features._quicknote_menu_v1 = true
+      features.show_koassistant_in_highlight = false
+      local hidden = {}
+      for _idx, id in ipairs(self.settings:readSetting("highlight_menu_actions") or {}) do
+        hidden[id] = true
+      end
+      local Actions = require("koassistant.prompts.actions")
+      for _idx, group in ipairs({ Actions.highlight or {}, Actions.special or {} }) do
+        for _id, action in pairs(group) do
+          if action.in_highlight_menu then hidden[action.id] = true end
+        end
+      end
+      hidden.model_switch = nil
+      local dismissed = self.settings:readSetting("_dismissed_highlight_menu_actions") or {}
+      local present = {}
+      for _idx, id in ipairs(dismissed) do present[id] = true end
+      for id in pairs(hidden) do
+        if not present[id] then table.insert(dismissed, id) end
+      end
+      self.settings:saveSetting("_dismissed_highlight_menu_actions", dismissed)
+      self.settings:saveSetting("highlight_menu_actions", { "model_switch" })
       needs_save = true
     end
 
@@ -21278,7 +21307,7 @@ function AskGPT:showAINotePicker(capture)
     preview = preview:sub(1, 80):gsub("[\128-\191]+$", "") .. "…"
   end
   dialog = ButtonDialog:new{
-    title = T(_("AI Note: “%1”"), preview),
+    title = T(_("QuickNote: “%1”"), preview),
     title_align = "center",
     buttons = rows,
   }
